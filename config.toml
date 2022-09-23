@@ -1,0 +1,39 @@
+baseURL = "https://blog.jackgreenberg.co"
+languageCode = "en-us"
+title = "Jack Greenberg"
+pygmentsCodeFences = true
+pygmentsUseClasses=true
+enableInlineShortcodes = true
+enableEmoji = true
+
+[params]
+  description = "Jack's blog and portfolio."
+  copyright = "Copyright (c) 2022 Jack Greenberg"
+  dark = "auto"
+  highlight = true
+  mainSections = ["posts"]
+
+[menu]
+  [[menu.main]]
+    identifier = "about"
+    name = "about"
+    title = "about"
+    url = "/about/"
+    weight = 10
+
+  [[menu.main]]
+    identifier = "projects"
+    name = "projects"
+    title = "projects"
+    url = "/projects/"
+    weight = 20
+
+  [[menu.main]]
+    identifier = "resume"
+    name = "resume"
+    title = "resume"
+    url = "/resume.pdf"
+    weight = 30
+
+[markup.goldmark.renderer]
+unsafe = true

@@ -1,0 +1,16 @@
+<svg class="d3" {{ with .Get "id" }} id = "{{ . }}" {{ end }}></svg>
+
+{{- if not (.Page.Scratch.Get "d3") -}}
+<!-- Include d3 only first time -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="/js/d3-helper.js"></script>
+{{- .Page.Scratch.Set "d3" true -}}
+{{- end -}}
+
+<script>
+    {{ with .Get "id" }}
+    var svg = d3.select("#{{ . }}");
+    {{ end }}
+
+    {{ .Inner | safeJS }}
+</script>

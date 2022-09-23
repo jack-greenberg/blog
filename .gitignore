@@ -1,0 +1,5 @@
+/public/
+/resources/_gen/
+*~
+*.ignore
+.hugo_build.lock

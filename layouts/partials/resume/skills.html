@@ -1,0 +1,18 @@
+<section class="section">
+    <h2 class="section__header">Skills</h2>
+
+    <div class="subsection--columns">
+    {{ range $category := .Site.Data.resume.skills }}
+        {{ range $type, $skills := $category }}
+        <section class="subsection">
+            <h3 class="subsection__header">{{ $type }}</h3>
+            <ul>
+                {{ range $skills }}
+                    <li>{{ . }}</li>
+                {{ end }}
+            </ul>
+        </section>
+        {{ end }}
+    {{ end }}
+    </div>
+</section>

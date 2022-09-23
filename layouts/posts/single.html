@@ -1,0 +1,42 @@
+{{ define "main" }}
+{{ if .Params.toc }}
+<aside id="toc">
+    <h4>Table of Contents</h4>
+    {{ .TableOfContents }}
+</aside>
+{{ end }}
+<article>
+    <header id="post-header">
+        <h1>{{ .Title }}</h1>
+            <div>
+            {{- if isset .Params "date" -}}
+                {{ if eq .Lastmod .Date }}
+                <time>{{ .Date.Format "January 2, 2006" }}</time>
+                {{ else }}
+                Updated <time>{{ .Lastmod.Format "January 2, 2006" }}</time>
+                {{ end }}
+            {{- end -}}
+
+            {{- if isset .Params "tags" -}}
+                {{ range .Params.tags }}
+                    <span class="tag"><a href="/tags/{{ . }}/">{{ . }}</a></span>
+                {{ end }}
+            {{- end -}}
+            {{ if .Draft }}
+                <span style="color: gray;font-size: .8em; border: 1px solid gray; padding: .1em .3em; vertical-align: middle">
+                    Draft
+                </span>
+            {{ end }}
+            </div>
+    </header>
+
+    <details id="toc-inline">
+        <summary>
+            <b>Table of Contents</b>
+        </summary>
+        {{ .TableOfContents }}
+    </details>
+
+    {{- .Content -}}
+</article>
+{{ end }}

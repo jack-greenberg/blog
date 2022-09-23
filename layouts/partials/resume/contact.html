@@ -1,0 +1,30 @@
+<section class="section">
+    <h2 class="section__header">Contact</h2>
+
+    {{ with .Site.Data.resume }}
+    <ul>
+        <li>
+            <a href="{{ .website }}">{{ .website }}</a>
+        </li>
+        <li>
+            <a href="mailto:{{ .email }}">{{ .email }}</a>
+        </li>
+        <li>
+            {{ .location }}
+        </li>
+        {{ range .profiles }}
+            <li>
+                <a href="{{ .url }}">
+                    {{ .name }}
+                    {{ if gt (len .username) 0 }}
+                    <span style="font-style: italic">@{{ .username }}</span>
+                    {{ end }}
+                </a>
+            </li>
+        {{ end }}
+        <li>
+            {{ .phone }}
+        </li>
+    </ul>
+    {{ end }}
+</section>

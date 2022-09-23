@@ -1,0 +1,20 @@
+<div class="message-wrapper">
+<div
+    class="
+        {{ if eq (index .Params "from") ("you") }}
+        yours
+        {{ end }}
+
+        {{ if eq (index .Params "from") ("me") }}
+        mine
+        {{ end }}
+        
+        message
+    "
+>
+    {{ .Inner }}
+</div>
+    {{ if isset .Params "read" }}
+    <div class="read">Read</div>
+    {{ end }}
+</div>

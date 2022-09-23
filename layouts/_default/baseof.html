@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+    {{- partial "head.html" . -}}
+    <body>
+        {{- partial "header.html" . -}}
+        <main id="content">
+        {{- block "main" . }}{{- end }}
+        </main>
+        {{- partial "footer.html" . -}}
+    </body>
+
+    <script>
+        let darkModeState = false;
+        const useDark = window.matchMedia("(prefers-color-scheme: dark)");
+
+        const toggle_button = document.querySelector("#toggle-dark");
+        
+        function toggleDarkMode(state) {
+            document.documentElement.classList.toggle("dark-mode", state);
+            darkModeState = state;
+        }
+
+        toggleDarkMode(localStorage.getItem("dark-mode") == "true");
+        
+        useDark.addListener((evt) => toggleDarkMode(evt.matches));
+
+        toggle_button.addEventListener("click", () => {
+            darkModeState = !darkModeState;
+
+            toggleDarkMode(darkModeState);
+            localStorage.setItem("dark-mode", darkModeState);
+        });
+    </script>
+</html>
