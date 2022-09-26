@@ -1,0 +1,111 @@
+<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Jack's blog and portfolio."><link rel="shortcut icon" href=https://blog.jackgreenberg.co/favicon.ico><link rel=stylesheet href=/css/style.min.css><title>Getting started with STM32H750VB in Rust</title><link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel=stylesheet></head><body><script>MathJax={tex:{inlineMath:[["$","$"],["\\(","\\)"]],displayMath:[["$$","$$"],["\\[","\\]"]],processEscapes:!0,processEnvironments:!0},options:{skipHtmlTags:["script","noscript","style","textarea","pre"]}},window.addEventListener("load",e=>{document.querySelectorAll("mjx-container").forEach(function(e){e.parentElement.classList+="has-jax"})})</script><header class=banner><h2><a href=https://blog.jackgreenberg.co>Jack Greenberg</a></h2><nav><ul><li><a href=/about/ title=about>about</a></li><li><a href=/projects/ title=projects>projects</a></li><li><a href=/resume.pdf title=resume>resume</a></li><li><button id=toggle-dark><svg id="sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-sun"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><svg id="moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-moon"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></button></li></ul></nav></header><main id=content><article><header id=post-header><h1>Getting started with STM32H750VB in Rust</h1><div><time>September 21, 2022</time></div></header><details id=toc-inline><summary><b>Table of Contents</b></summary><nav id=TableOfContents><ul><li><ul><li><a href=#aside-hardware-peripherals-in-rust>Aside: Hardware Peripherals in Rust</a></li></ul></li><li><a href=#blinking-something>Blinking something</a></li><li><a href=#zooming-back-out>Zooming back out</a><ul><li><a href=#aside-embedded-rust-volatility>Aside: Embedded Rust Volatility</a></li></ul></li><li><a href=#artifacts-and-resources>Artifacts and Resources</a></li></ul></nav></details><p>This is the story of my incredibly frustrating start with the STM32H750VB
+microcontroller in Rust.</p><h1 id=online-shopping>Online shopping</h1><p>A few months ago, I was browsing Adafruit and came across a cute looking dev
+board called the <a href=https://www.adafruit.com/product/5032>WeAct Studio STM32H750 Development Board</a>. It has</p><ul><li>an LCD screen,</li><li>a camera,</li><li>an SD card slot,</li><li>a USB-C connector, and</li><li>an STM32H750VB microcontroller.</li></ul><p>This seemed like a great candidate to get started using embedded Rust,
+especially because I was hoping to be able to use it as a platform to play
+around with <a href=https://github.com/oxidecomputer/hubris>Hubris</a>.</p><h1 id=initial-commit>Initial commit</h1><p>While at the <a href=https://osfc.io>Open Source Firmware Conference (OSFC)</a> in Sweden in September, I
+started to mess around with the board<sup id=fnref:1><a href=#fn:1 class=footnote-ref role=doc-noteref>1</a></sup>. As with most embedded engineers, I
+started with Blinky.</p><p>I began by cloning the <a href=https://github.com/rust-embedded/cortex-m-quickstart>cortex-m-quickstart</a> repository on GitHub, a template
+that can be used for ARM Cortex M microcontrollers. To begin with, I looked at
+the configuration files to see what needed to change:</p><ul><li><p><code>.cargo/config.toml</code>: The chip that I am using is a Cortex-M4F with an FPU, so
+the target (in <code>[build]</code>) should be <code>thumbv7em-none-eabihf</code></p></li><li><p><code>Cargo.toml</code>: I added the <code>stm32h7xx_hal</code> crate that provides access to
+peripherals in a convenient way.</p></li><li><p><code>memory.x</code>: I set up the linker script to just include 128K of flash at
+<code>0x08000000</code> and 128K of RAM at <code>0x2000000</code>, which corresponds to the DTCM
+RAM. I tried using <code>0x30000000</code> for the SRAM1 region, but it didn&rsquo;t work<sup id=fnref:2><a href=#fn:2 class=footnote-ref role=doc-noteref>2</a></sup>
+😞</p></li></ul><p>In my <code>main.rs</code>, I started scaffolding the code for blinky:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=cp>#![no_std]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=cp>#![no_main]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>use</span><span class=w> </span><span class=n>panic_halt</span><span class=w> </span><span class=k>as</span><span class=w> </span><span class=n>_</span><span class=p>;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>use</span><span class=w> </span><span class=n>cortex_m_rt</span>::<span class=n>entry</span><span class=p>;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>use</span><span class=w> </span><span class=n>stm32h7xx_hal</span>::<span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=n>delay</span>::<span class=n>Delay</span><span class=p>,</span><span class=w> </span><span class=n>pac</span><span class=p>,</span><span class=w> </span><span class=n>prelude</span>::<span class=o>*</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>};</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=cp>#[entry]</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>fn</span> <span class=nf>main</span><span class=p>()</span><span class=w> </span>-&gt; <span class=o>!</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=c1>// Init
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>loop</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></div><p>We have our basic embedded application architecture with an <a href="https://twitter.com/jackgreenb/status/1572328501692305418?s=20&t=Z4xmnQe7G4iwrupgeeD2Dg">entrypoint</a>, space
+for initialization code, and a main loop.</p><p>Let&rsquo;s start filling it in. In our initialization, we need access to the <em>device</em>
+peripherals like the power configuration and GPIOs, as well as the <em>core</em>
+peripherals (unique to Cortex-M devices) like the NVIC and SysTick timer:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=c1>// Device peripherals (i.e. GPIO)
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kd>let</span><span class=w> </span><span class=n>dp</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>pac</span>::<span class=n>Peripherals</span>::<span class=n>take</span><span class=p>().</span><span class=n>unwrap</span><span class=p>();</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=c1>// Core peripherals (i.e. NVIC)
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=kd>let</span><span class=w> </span><span class=n>cp</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>cortex_m</span>::<span class=n>Peripherals</span>::<span class=n>take</span><span class=p>().</span><span class=n>unwrap</span><span class=p>();</span><span class=w>
+</span></span></span></code></pre></div><p>In Cortex-M-based devices (like ours), the <strong>RCC</strong> (reset and clock control)
+peripheral controls which peripherals receive power and are enabled. We also
+need to use the <strong>PWR</strong> (power) peripheral to make sure our device has the
+correct power supply. We access these like so:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=kd>let</span><span class=w> </span><span class=n>pwrcfg</span>: <span class=nc>stm32h7xx_hal</span>::<span class=n>pwr</span>::<span class=n>PowerConfiguration</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>dp</span><span class=p>.</span><span class=n>PWR</span><span class=p>.</span><span class=n>constrain</span><span class=p>().</span><span class=n>freeze</span><span class=p>();</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>let</span><span class=w> </span><span class=n>rcc</span>: <span class=nc>stm32h7xx_hal</span>::<span class=n>rcc</span>::<span class=n>Rcc</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>dp</span><span class=p>.</span><span class=n>RCC</span><span class=p>.</span><span class=n>constrain</span><span class=p>();</span><span class=w>
+</span></span></span></code></pre></div><p>When I saw this in the example code I was <del>pirating</del> learning from, I was
+confused by <code>.constrain()</code> and <code>.freeze()</code>. It took a bit of digging, but I came
+across <a href=https://blog.japaric.io/brave-new-io/>a great article by Jorge Aparicio</a> about the model that Rust uses to
+interact with hardware peripherals (see the Aside for more details).</p><blockquote><h3 id=aside-hardware-peripherals-in-rust>Aside: Hardware Peripherals in Rust</h3><p>In a nutshell, embedded Rust utilizes the ownership model for controlling
+access to peripherals.</p><p>Starting with a concrete example, when we access <code>dp.RCC</code>, we are accessing a
+struct with a bunch of members that represent the parts of the PWR registers
+in our microcontroller. In C, we configure the PWR hardware block by writing
+to those registers. We do a similar thing in Rust, except it&rsquo;s abstracted.
+Calling <code>.constrain()</code> &ldquo;consumes the original <code>RCC</code> which granted full access
+to every <code>RCC</code> register&rdquo; and only allows us to modify aspects of the register
+defined in a struct called <strong><code>Parts</code></strong> (it&rsquo;s not crucial to know what is in
+<code>Parts</code>).</p><p>When we call <code>.freeze()</code>, we consume the <code>Parts</code> struct, effectively
+preventing further modification of the peripherals. This ensures we don&rsquo;t have
+multiple places in our code trying to change the configuration of peripherals.
+Note that there are some peripherals that return a new object after calling
+<code>.freeze()</code> because there are parts that make sense to modify during the
+runtime of the device.</p></blockquote><p>Ok back to blinky. We gain access to the CCDR (Core Clock Distribution and
+Reset) struct using the RCC, PWR, and SYSCFG registers. (If this sounds like a
+lot, don&rsquo;t worry&ndash;<strong>it is</strong>. I don&rsquo;t fully understand each and every register we
+are writing to. Most of this code is copied and pasted and slightly tweaked
+until I got things working.)</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=kd>let</span><span class=w> </span><span class=n>ccdr</span>: <span class=nc>stm32h7xx_hal</span>::<span class=n>rcc</span>::<span class=n>Ccdr</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>rcc</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>.</span><span class=n>sys_ck</span><span class=p>(</span><span class=mf>96.</span><span class=n>MHz</span><span class=p>())</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>.</span><span class=n>pclk1</span><span class=p>(</span><span class=mf>48.</span><span class=n>MHz</span><span class=p>())</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>.</span><span class=n>freeze</span><span class=p>(</span><span class=n>pwrcfg</span><span class=p>,</span><span class=w> </span><span class=o>&amp;</span><span class=n>dp</span><span class=p>.</span><span class=n>SYSCFG</span><span class=p>);</span><span class=w>
+</span></span></span></code></pre></div><p>The above code sets up the main clocks in the microcontroller at the given
+frequencies, and then &ldquo;freezes&rdquo; the configuration so that it can&rsquo;t be modified.</p><p>This is the last bit of code we need for initializing the microcontroller
+itself. Next, we will look at setting up GPIO specifically and blinking the LED.</p><h2 id=blinking-something>Blinking something</h2><p>There are a number of GPIO &ldquo;pin banks&rdquo; in the STM32 microcontrollers. They are
+in a group of 16 pins and each group is assigned a letter. So you might 16 pins
+on Port A, labeled <code>PA0</code>, <code>PA1</code>, &mldr;, <code>PA15</code>. To access individual pins, we have
+to &ldquo;split&rdquo; the GPIO group:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=kd>let</span><span class=w> </span><span class=n>gpioe</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>dp</span><span class=p>.</span><span class=n>GPIOE</span><span class=p>.</span><span class=n>split</span><span class=p>(</span><span class=n>ccdr</span><span class=p>.</span><span class=n>peripheral</span><span class=p>.</span><span class=n>GPIOE</span><span class=p>);</span><span class=w>
+</span></span></span></code></pre></div><p>The LED on our board is connected to Port E, pin 3 (<code>PE3</code>), hence using <code>GPIOE</code>.
+We can use the <code>gpioe</code> variable to access the individual pins like so:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=kd>let</span><span class=w> </span><span class=k>mut</span><span class=w> </span><span class=n>led</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>gpioe</span><span class=p>.</span><span class=n>pe3</span><span class=p>.</span><span class=n>into_push_pull_output</span><span class=p>();</span><span class=w>
+</span></span></span></code></pre></div><p>We now have a variable that represents the pin our LED is attached to. We set it
+to be <em>push/pull</em> as opposed to <em>open drain</em>. The difference isn&rsquo;t important for
+this post.</p><p>In order to blink the LED, we need to be able to delay for a certain amount of
+time. Luckily, there is a helpful abstraction we can use: <code>delay::Delay</code>! This
+is a struct with methods that allow a developer to insert arbitrary-time-length
+delays into their code:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=kd>let</span><span class=w> </span><span class=k>mut</span><span class=w> </span><span class=n>delay</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>delay</span>::<span class=n>Delay</span>::<span class=n>new</span><span class=p>(</span><span class=n>cp</span><span class=p>.</span><span class=n>SYST</span><span class=p>,</span><span class=w> </span><span class=n>ccdr</span><span class=p>.</span><span class=n>clocks</span><span class=p>);</span><span class=w>
+</span></span></span></code></pre></div><p>Now we have our LED variable and our delay variable, and that is all we need to
+do for initialization! After all that, we implemenet a simple 2 line loop:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=k>loop</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=n>led</span><span class=p>.</span><span class=n>toggle</span><span class=p>();</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=n>delay</span><span class=p>.</span><span class=n>delay_ms</span><span class=p>(</span><span class=mi>500_</span><span class=k>u16</span><span class=p>);</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></div><p>We toggle the LED and we delay for 500 milliseconds!</p><h2 id=zooming-back-out>Zooming back out</h2><p>In all honesty, this was a pretty large effort. It took a while to understand
+how the <code>.constrain()</code>, <code>.freeze()</code>, and <code>.split()</code> methods worked. On top of
+that, some of the code examples I found online were outdated and didn&rsquo;t compile
+straight out of the box.</p><blockquote><h3 id=aside-embedded-rust-volatility>Aside: Embedded Rust Volatility</h3><p>One issue I have been having with my journey so far is how <strong>volatile</strong> the
+embedded Rust ecosystem is. I believe that the problem is definitely getting
+better, but there are small differences in different APIs and crates that make
+things difficult to just port over, and often the documentation associated
+with the crates isn&rsquo;t stellar. I can see this being one of the biggest
+hurdles to get over when starting off in embedded Rust.</p></blockquote><p>The code to get blinky running is also substantially longer than the code would
+be in C. However, as I would come to learn after trying a few more advanced
+things that I&rsquo;ll cover in subsequent posts, the advantages of Rust are truly
+enough to make me never want to write embedded C again.</p><p>The whole I/O system that Jorge Aparicio discusses in his blog post (linked
+above and at the end) is quite nice. Rust&rsquo;s use of generic types and traits also
+means that code is quite easy to port over. As I will explore in the next post,
+abstractions make things very easy when you have complicated systems, such as an
+LCD screen driven by an external chip using SPI <em>and</em> GPIOs.</p><p>The next post will go into writing a simple program to display an image and text
+on the little LCD screen of my dev board. It turns out to be far simpler than I
+originally thought it might be 😅</p><h2 id=artifacts-and-resources>Artifacts and Resources</h2><ul><li><a href=https://github.com/jack-greenberg/embedded-rust-isr/blob/main/blinky/src/main.rs>Blinky with a ton of comments</a>: This is the same blinky I wrote about in this
+post, but with lots of comments on every line.</li><li><a href=https://blog.japaric.io/brave-new-io/>Brave new I/O</a>: A more thorough introduction to embedded Rust&rsquo;s approach to
+microcontroller code.</li><li><a href=https://github.com/joaocarvalhoopen/How_to_learn_modern_Rust#embedded-rust>Learn modern embedded Rust</a>: A list of resources (very meta) for learning
+embedded Rust!</li><li><a href=https://www.anyleaf.org/blog/rust-embedded-ecosystem-and-tools>Rust embedded ecosystem and tools</a>: A list of tools to make embedded Rust
+easier and smoother</li><li><a href=https://dev.to/apollolabsbin/demystifying-rust-embedded-hal-split-and-constrain-methods-591e>Demystifying Rust Embedded HAL Split and Constrain Methods</a>: An informative
+post about <code>.split()</code> and <code>.constrain()</code>.</li></ul><div class=footnotes role=doc-endnotes><hr><ol><li id=fn:1><p>This happened between the hours of 11pm and 1am as I was severly
+jet-lagged.&#160;<a href=#fnref:1 class=footnote-backref role=doc-backlink>&#8617;&#xfe0e;</a></p></li><li id=fn:2><p>Note to self: need to spend more time on this.&#160;<a href=#fnref:2 class=footnote-backref role=doc-backlink>&#8617;&#xfe0e;</a></p></li></ol></div></article></main><footer id=footer>Copyright (c) 2022 Jack Greenberg</footer></body><script>let darkModeState=!1;const useDark=window.matchMedia("(prefers-color-scheme: dark)"),toggle_button=document.querySelector("#toggle-dark");function toggleDarkMode(e){document.documentElement.classList.toggle("dark-mode",e),darkModeState=e}toggleDarkMode(localStorage.getItem("dark-mode")=="true"),useDark.addListener(e=>toggleDarkMode(e.matches)),toggle_button.addEventListener("click",()=>{darkModeState=!darkModeState,toggleDarkMode(darkModeState),localStorage.setItem("dark-mode",darkModeState)})</script></html>

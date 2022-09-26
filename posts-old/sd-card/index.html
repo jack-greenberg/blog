@@ -1,0 +1,77 @@
+<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Jack's blog and portfolio."><link rel="shortcut icon" href=https://blog.jackgreenberg.co/favicon.ico><link rel=stylesheet href=/css/style.min.css><title>More about SD Cards than you (probably) wanted to know</title><link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel=stylesheet></head><body><script>MathJax={tex:{inlineMath:[["$","$"],["\\(","\\)"]],displayMath:[["$$","$$"],["\\[","\\]"]],processEscapes:!0,processEnvironments:!0},options:{skipHtmlTags:["script","noscript","style","textarea","pre"]}},window.addEventListener("load",e=>{document.querySelectorAll("mjx-container").forEach(function(e){e.parentElement.classList+="has-jax"})})</script><header class=banner><h2><a href=https://blog.jackgreenberg.co>Jack Greenberg</a></h2><nav><ul><li><a href=/about/ title=about>about</a></li><li><a href=/projects/ title=projects>projects</a></li><li><a href=/resume.pdf title=resume>resume</a></li><li><button id=toggle-dark><svg id="sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-sun"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><svg id="moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-moon"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></button></li></ul></nav></header><main id=content><article><header id=post-header><h1>More about SD Cards than you (probably) wanted to know</h1><div><time>March 11, 2022</time>
+<span class=tag><a href=/tags/firmware/>firmware</a></span>
+<span class=tag><a href=/tags/electrical/>electrical</a></span></div></header><p>In order to understand how writing to an SD card works, you have to first
+understand two things (or at least know what they are): SPI and filesystem
+formats.</p><p>SPI is the communication protocol used by SD cards. They use a particular
+protocol that sits on top of SPI (just above the physical layer in the OSI
+model, like UDS for CAN) which dictates what data should be sent when, and how
+the sender and receiver should respond and react to that data. SPI alone won&rsquo;t
+work, you need to know what things to say in SPI. Think of it as SPI being a
+language, and the SD card protocol is how to have a conversation in that
+language (i.e. first you say &ldquo;hi&rdquo;, then they say &ldquo;hi&rdquo;, then you say &ldquo;how are
+you&rdquo;, then they respond with their status, etc etc).</p><p>Next, you need to know a bit about filesystems. In particular, FAT32, which is
+an acronym for <em>File Allocation Table 32</em>, where the 32 comes from the fact that
+the filesystem uses 32 bits of data to identify a cluster of data on a storage
+device. A filesystem like FAT32 is basically a system for storing data to some
+non-volatile memory (as opposed to RAM, which is volatile memory). FAT32 is
+fairly space-efficient, and, importantly, it is cross-compatible with most
+devices in the world, since most devices use them (your laptop might use
+FAT32!).</p><p>In the SD card that we create, we&rsquo;ll use the FAT32 filesystem. This will allow
+us to mount the SD card in our computer once it comes off the car. Additionally,
+there are a number of libraries (meant for Arduinos) that understand how to
+communicate with a FAT32-formatted SD card using SPI, so we&rsquo;ll probably use
+those.</p><p>In particular, we should look into the <a href=https://github.com/greiman/SdFat>SdFat
+library</a>, which is what the Arduino standard
+library uses under the hood to communicate with SD cards. The
+<a href=https://www.arduino.cc/en/Reference/SD>arduino.cc</a> link in the Resources
+column lists some examples, and there are also examples in the /examples folder
+of the SdFat library linked.</p><h2 id=super-nerdy-deep-dive-into-sd-cards>Super nerdy deep dive into SD cards</h2><p><em>Most of this is taken from <a href=https://www.engineersgarage.com/avr-microcontroller/interfacing-sd-card-with-avr-microcontroller-part-38-46/>this
+article</a>.</em></p><p>SD cards can be broken up into 2 main blocks: the <strong>memory core</strong> and the <strong>SD
+card controller</strong>. The memory core is where the actual data is written and
+stored, and where the filesystem exists. The SD card controller is basically
+like a translator that interprets commands from SPI and interfaces with the
+memory core. &ldquo;It can respond to certain set of standard <em>SD commands</em> and read
+or write data from the memory core in for the external device.&rdquo;</p><p><img src=SD%20Card%20Research%20cdcda324ff2f47439076ef39eb340c42/sd_diagram.gif alt=SD%20Card%20Research%20cdcda324ff2f47439076ef39eb340c42/sd_diagram.gif></p><p>The capacity of the memory core is equivalent to the size of the SD card. Aside
+from the memory core, there are registers that store the status of the SD card,
+which are read-only (RO).</p><h3 id=communicating-with-an-sd-card>Communicating with an SD card</h3><p>You can connect an SD card either to an &ldquo;SD bus&rdquo;, or to a SPI bus. An SD bus is
+nice because it is much <em>faster</em>, however, most microcontrollers come with SPI
+functionality, so SPI buses are more common. There is a standard set of &ldquo;SD
+commands&rdquo; sent over the SPI bus (or the SD bus, if used) that allow data reads
+and writes from the memory core. There are some SD commands that are
+inaccessible from SPI (only accessible using an SD bus), but they aren&rsquo;t
+critical.</p><h3 id=functional-layers-of-an-sd-card>Functional layers of an SD card</h3><p>There are 3 functional layers of an SD card:</p><ol><li>Serial interface layer</li><li>SD commands layer</li><li>Filesystem layer</li></ol><p><img src=https://engineersgarag.wpengine.com/wp-content/uploads/2019/07/Memory-Architechure-of-SD-Card.png alt=https://engineersgarag.wpengine.com/wp-content/uploads/2019/07/Memory-Architechure-of-SD-Card.png></p><p>The serial interface layer and the SD command layer are a part of the SD
+controller, and the filesystem layer is part of the ‘Memory core’.</p><h3 id=serial-interface-layer>Serial Interface Layer</h3><p>This is the layer in which we need to specify which communication bus we are
+using: SPI bus or SD bus. The microcontroller can specify which device it wants
+to communicate over SPI with using the correct CS, or chip-select, pin.</p><p>The following table lists the SD card pin and it&rsquo;s associated purpose. Following
+the table, there is a diagram with the pin numbering:</p><p><a href=https://www.notion.so/597e6a12e77a4619aba73d46a5018c5b>Untitled</a></p><p><img src=https://engineersgarag.wpengine.com/wp-content/uploads/2019/07/SD-Card-with-PIN-Out.jpg alt=https://engineersgarag.wpengine.com/wp-content/uploads/2019/07/SD-Card-with-PIN-Out.jpg></p><p><a href="https://external-content.duckduckgo.com/iu/?u=http%3A%2F%2Fwww.theorycircuit.com%2Fwp-content%2Fuploads%2F2018%2F01%2Fmicro-sd-pinout.png&f=1&nofb=1">https://external-content.duckduckgo.com/iu/?u=http%3A%2F%2Fwww.theorycircuit.com%2Fwp-content%2Fuploads%2F2018%2F01%2Fmicro-sd-pinout.png&f=1&nofb=1</a></p><p>SD cards usually operate at 3.3V, so a voltage regulator will be required for a
+microcontroller operating at 5V (like most of our boards).</p><h3 id=sd-command-layer>SD Command Layer</h3><p>There are a few standard commands that the SD card can understand, and they can
+be used by the microcontroller to read registers, and read and write core
+memory.</p><p>There are six registers in the SD controller:</p><p><a href=https://www.notion.so/4587be2ecbef4761b7d317ab6ef98b23>SD Controller
+Registers</a></p><h3 id=sd-commands>SD Commands</h3><p>All SD commands are 6 bytes long. There is a CRC (cyclic redundancy check) in
+the last byte to check for data correctness. The SD card ignores the CRC for
+most commands except CMD8, unless the sender requests that the CRC be checked
+each time. The commands generally follow this format:</p><p><img src=SD%20Card%20Research%20cdcda324ff2f47439076ef39eb340c42/sd_cmd.png alt=SD%20Card%20Research%20cdcda324ff2f47439076ef39eb340c42/sd_cmd.png></p><p>A table containing all the SD commands can be found
+<a href=http://www.chlazza.net/sdcardinfo.html>here</a>. I&rsquo;ve left it out for brevity&rsquo;s
+sake. It&rsquo;s worth a skim though.</p><h3 id=responses>Responses</h3><p>There are 3 basic responses from the SD card back to the microcontroller:</p><p><img src=https://engineersgarag.wpengine.com/wp-content/uploads/2019/07/SD-card-command-Response-1-in-SPI-Mode.png alt=https://engineersgarag.wpengine.com/wp-content/uploads/2019/07/SD-card-command-Response-1-in-SPI-Mode.png></p><p><img src=https://engineersgarag.wpengine.com/wp-content/uploads/2019/07/SD-card-command-Response-2-in-SPI-Mode.png alt=https://engineersgarag.wpengine.com/wp-content/uploads/2019/07/SD-card-command-Response-2-in-SPI-Mode.png></p><p><img src=https://engineersgarag.wpengine.com/wp-content/uploads/2019/07/SD-card-command-Response-3-in-SPI-Mode.png alt=https://engineersgarag.wpengine.com/wp-content/uploads/2019/07/SD-card-command-Response-3-in-SPI-Mode.png></p><h3 id=writing>Writing</h3><p>There are two main write commands: <strong>write block</strong> and <strong>write multiple block</strong>.
+A <strong>block</strong> is a consecutive chunk of 512 bytes of memory. If you wanted to
+write the 2000th memory location, the command would look like:</p><ol><li>First byte: 0x18 (write block)</li><li>2nd-5th byte: 0x000007d0 (2000 in base 10 (argument)</li><li>6th byte: CRC</li></ol><p>You&rsquo;ll then receive an R1 response, so if there were no errors, you can start
+sending data. You <em>must</em> send 512 data bytes, even if your data isn&rsquo;t that
+large. The actual data is preceded by a data token, a byte with all the bits
+except the LSB is set to 1 (0xFE). Then bytes 2-513 are the data bytes. Finally,
+the last two bytes are a CRC.</p><h3 id=reading>Reading</h3><p>Reading is similar process to writing, you just use a different command number.
+The errors associated are worth a look though:</p><p><img src=SD%20Card%20Research%20cdcda324ff2f47439076ef39eb340c42/sd_error.gif alt=SD%20Card%20Research%20cdcda324ff2f47439076ef39eb340c42/sd_error.gif></p><p>This is the response byte from the SD card to the microcontroller. Not yet sure
+what the CC Error and the Card ECC Failed things mean. Out of range likely means
+that the the data you requested doesn&rsquo;t exist.</p><h3 id=initializing>Initializing</h3><p>The following flow chart shows the initialization sequence for an SD card in SPI
+mode.</p><p><img src=https://engineersgarag.wpengine.com/wp-content/uploads/2019/07/Algorithm-to-initialize-SD-card-in-SPI-mode-using-AVR.png alt=https://engineersgarag.wpengine.com/wp-content/uploads/2019/07/Algorithm-to-initialize-SD-card-in-SPI-mode-using-AVR.png></p><h3 id=filesystem-layer>Filesystem Layer</h3><p>The FAT32 filesystem is written to the SD card when the memory core is
+formatted. The data of a file is scrambled around the memory core, and there is
+a FAT (file allocation table) that holds the location of next block
+corresponding to the location of the current block.</p><p>A memory core has 1 byte memory locations, and the locations are grouped into
+&ldquo;sectors&rdquo;. In FAT32, sectors contain 512 memory locations. Those sectors are
+then arranged into clusters. The number of sectors per cluster varies.</p><p>FAT32 is arranged such that the first handful of sectors at the beginning of the
+memory core are reserved for metadata and operations. The first sector is the
+MBR, or master boot record. It holds metadata about the partitions inside the
+file system.</p><p>Then, there are a number of unused and reserved sectors.</p><p>After that, there are the FATs. These are basically a bunch of look-up tables
+that provide the information about where data is located. Because the files are
+scrambled among the SD card, the file allocation tables are used to figure out
+where a certain piece of data starts, and where to jump to next. After that
+comes the data stored on the SD card.</p><h1 id=resources>Resources</h1><ul><li><a href=https://www.engineersgarage.com/avr-microcontroller/interfacing-sd-card-with-avr-microcontroller-part-38-46/>https://www.engineersgarage.com/avr-microcontroller/interfacing-sd-card-with-avr-microcontroller-part-38-46/</a></li><li><a href=https://github.com/greiman/SdFat>https://github.com/greiman/SdFat</a></li><li><a href=https://www.arduino.cc/en/Reference/SD>https://www.arduino.cc/en/Reference/SD</a></li></ul></article></main><footer id=footer>Copyright (c) 2022 Jack Greenberg</footer></body><script>let darkModeState=!1;const useDark=window.matchMedia("(prefers-color-scheme: dark)"),toggle_button=document.querySelector("#toggle-dark");function toggleDarkMode(e){document.documentElement.classList.toggle("dark-mode",e),darkModeState=e}toggleDarkMode(localStorage.getItem("dark-mode")=="true"),useDark.addListener(e=>toggleDarkMode(e.matches)),toggle_button.addEventListener("click",()=>{darkModeState=!darkModeState,toggleDarkMode(darkModeState),localStorage.setItem("dark-mode",darkModeState)})</script></html>

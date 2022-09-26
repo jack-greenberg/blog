@@ -1,9 +1,0 @@
-:root {
-    /* Root colors */
-    --black: #313a3d;
-    --blue: #007dfa;
-
-    /* Element colors */
-    --text: var(--black);
-    --link-color: var(--blue);
-}

@@ -1,0 +1,58 @@
+<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Jack's blog and portfolio."><link rel="shortcut icon" href=https://blog.jackgreenberg.co/favicon.ico><link rel=stylesheet href=/css/style.min.css><title>Embedded Rust From Embedded C: Peripherals</title><link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel=stylesheet></head><body><script>MathJax={tex:{inlineMath:[["$","$"],["\\(","\\)"]],displayMath:[["$$","$$"],["\\[","\\]"]],processEscapes:!0,processEnvironments:!0},options:{skipHtmlTags:["script","noscript","style","textarea","pre"]}},window.addEventListener("load",e=>{document.querySelectorAll("mjx-container").forEach(function(e){e.parentElement.classList+="has-jax"})})</script><header class=banner><h2><a href=https://blog.jackgreenberg.co>Jack Greenberg</a></h2><nav><ul><li><a href=/about/ title=about>about</a></li><li><a href=/projects/ title=projects>projects</a></li><li><a href=/resume.pdf title=resume>resume</a></li><li><button id=toggle-dark><svg id="sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-sun"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><svg id="moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-moon"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></button></li></ul></nav></header><main id=content><article><header id=post-header><h1>Embedded Rust From Embedded C: Peripherals</h1><div><time>September 20, 2022</time></div></header><details id=toc-inline><summary><b>Table of Contents</b></summary><nav id=TableOfContents><ul><li><a href=#peripherals>Peripherals</a><ul><li><a href=#c>C</a></li><li><a href=#rust>Rust</a></li><li><a href=#next-time>Next time</a></li></ul></li></ul></nav></details><p>As an embedded C developer, I have become entrenched in the ways of the
+language. Things like using structs to access registers or <a href=https://interrupt.memfault.com/blog/opaque-pointers>opaque pointers</a> for
+passing data around<sup id=fnref:1><a href=#fn:1 class=footnote-ref role=doc-noteref>1</a></sup>. Rust provides a whole new memory model that makes
+writing <em>any</em> program safer at no extra cost. In the next few posts we&rsquo;ll
+explore some of the patterns that make embedded Rust special and compare them to
+how things are done in C.</p><h2 id=peripherals>Peripherals</h2><p>In microcontrollers, we interface with the modern world using peripherals like
+GPIO, ADCs, and serial communication like SPI and I2C. In order for a program to
+interact with these peripherals, we read from and write to sections of memory
+that are divided up as registers. In C, we might represent the registers using a
+struct where each member of the struct is a bitfield for the different bits in
+that register.</p><h3 id=c>C</h3><p>As an example, let&rsquo;s look at the <code>SPI_CFG1</code> register. It has an address
+offset of <code>0x08</code> from the base of <code>0x40013000</code>, so the address of the memory for
+that register is <code>0x40013008</code>. Bits 0-4 indicate the number of bits in a SPI
+message, whereas bit 15 enables the DMA (direct memory access peripheral) stream
+for TX (message transmission). In C, we represent the register like so:</p><p>In C, this might look like:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=k>struct</span> <span class=n>SPI_CFG1_s</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kt>uint8_t</span> <span class=nl>DSIZE</span> <span class=p>:</span> <span class=mi>5</span><span class=p>;</span> <span class=c1>// Number of bits in a SPI message
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=kt>uint8_t</span> <span class=nl>FTHLV</span> <span class=p>:</span> <span class=mi>4</span><span class=p>;</span> <span class=c1>// ...
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=p>...</span>
+</span></span><span class=line><span class=cl>    <span class=kt>uint8_t</span> <span class=nl>TXDMAEN</span> <span class=p>:</span> <span class=mi>1</span><span class=p>;</span> <span class=c1>// Enable DMA Stream for TX
+</span></span></span><span class=line><span class=cl><span class=c1></span><span class=p>}</span> <span class=n>SPI_CFG1</span><span class=p>;</span>
+</span></span></code></pre></div><p>Then we can access it like so:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=n>SPI_CFG1</span><span class=p>.</span><span class=n>DSIZE</span> <span class=o>=</span> <span class=mi>0</span><span class=n>b00011</span><span class=p>;</span>
+</span></span></code></pre></div><h3 id=rust>Rust</h3><p>Rust also uses structs to represent the registers, but it uses Rust&rsquo;s ownership
+model to make this a bit safer. The idea is that you get variables that have
+ownership of certain aspects of the microcontroller. At the highest level, the
+Peripherals structs give access to the entire microcontroller<sup id=fnref:2><a href=#fn:2 class=footnote-ref role=doc-noteref>2</a></sup>. We then start
+accessing members of those structs and calling functions like <code>constrain()</code> and
+<code>freeze()</code> on them.</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=kd>let</span><span class=w> </span><span class=n>pwr</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>dp</span><span class=p>.</span><span class=n>PWR</span><span class=p>.</span><span class=n>constrain</span><span class=p>();</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=kd>let</span><span class=w> </span><span class=n>pwrcfg</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>pwr</span><span class=p>.</span><span class=n>freeze</span><span class=p>();</span><span class=w>
+</span></span></span></code></pre></div><p>This took some time to understand, but essentially <code>constrain</code> consumes the
+<code>dp.PWR</code> struct (a member of the device peripherals that represents all the
+registers corresponding to power management in the chip) and gives access to the
+HAL crate&rsquo;s Pwr struct, which contains some helpful abstractions that take care
+of reading and writing registers for you. Once the system has been configured,
+you call <code>.freeze()</code> to consume the struct to prevent further writes to the
+configuration.</p><p>The <code>freeze</code> method will return an instance of a struct that contains all of the
+configurations so that they can be used by other initialization. For instance,
+you need to use the PowerConfiguration struct (the outcome of calling <code>freeze</code>
+on the <code>pwr</code> struct above) to set up the Core Clock Distribution and Reset
+(CCDR) system that allows you to enable power and clocks to other peripherals
+like GPIO.<sup id=fnref:3><a href=#fn:3 class=footnote-ref role=doc-noteref>3</a></sup></p><p>These methods ensure that your peripherals that have dependencies (like GPIO on
+PWR and RCC) will be able to be configured and used properly. All of these
+checks happen at compile time, not at runtime. As a result, your program has no
+additional overhead but is still more robust.</p><h3 id=next-time>Next time</h3><p>In the next post, we&rsquo;ll explore traits and abstractions that make writing code
+easier and more generalizable! In the meantime, here are some good resources to
+check out that helped me a lot:</p><ul><li><a href=https://blog.japaric.io/brave-new-io/>Brave new I/O</a>: A more thorough introduction to embedded Rust&rsquo;s approach to
+microcontroller code.</li><li><a href=https://github.com/joaocarvalhoopen/How_to_learn_modern_Rust#embedded-rust>Learn modern embedded Rust</a>: A list of resources (very meta) for learning
+embedded Rust!</li><li><a href=https://www.anyleaf.org/blog/rust-embedded-ecosystem-and-tools>Rust embedded ecosystem and tools</a>: A list of tools to make embedded Rust
+easier and smoother</li><li><a href=https://dev.to/apollolabsbin/demystifying-rust-embedded-hal-split-and-constrain-methods-591e>Demystifying Rust Embedded HAL Split and Constrain Methods</a>: An informative
+post about <code>.split()</code> and <code>.constrain()</code>.</li><li><a href=https://gist.github.com/jack-greenberg/1ad01de50bb7ce3f76c9a3cbf9f66c97>Blinky with a ton of comments</a>: A GitHub gist I wrote that contains a program
+to blinky an LED on a <a href=https://www.adafruit.com/product/5032>WeAct Studio Dev Board</a> with almost every line
+commented in detail.</li></ul><div class=footnotes role=doc-endnotes><hr><ol><li id=fn:1><p>Basically object-oriented code in C&#160;<a href=#fnref:1 class=footnote-backref role=doc-backlink>&#8617;&#xfe0e;</a></p></li><li id=fn:2><p>There are two top-level structs we use: the <code>cortex_m::Peripherals</code> and
+<code>pac::Peripherals</code>. The former is for things specific to Cortex M
+microcontrollers, like the SysTick timer and Nested Vector Interrupt
+Controller (NVIC). The latter gives access to the other peripherals like
+timers, GPIO, ADC, etc.&#160;<a href=#fnref:2 class=footnote-backref role=doc-backlink>&#8617;&#xfe0e;</a></p></li><li id=fn:3><p>This brings up the question: &ldquo;What if I want to modify the configuration
+after?&rdquo; to which I say maybe you need a new system design. But it is still
+possible to use the PAC (peripheral access crate) to change things if you
+really need to. But&mldr; really?&#160;<a href=#fnref:3 class=footnote-backref role=doc-backlink>&#8617;&#xfe0e;</a></p></li></ol></div></article></main><footer id=footer>Copyright (c) 2022 Jack Greenberg</footer></body><script>let darkModeState=!1;const useDark=window.matchMedia("(prefers-color-scheme: dark)"),toggle_button=document.querySelector("#toggle-dark");function toggleDarkMode(e){document.documentElement.classList.toggle("dark-mode",e),darkModeState=e}toggleDarkMode(localStorage.getItem("dark-mode")=="true"),useDark.addListener(e=>toggleDarkMode(e.matches)),toggle_button.addEventListener("click",()=>{darkModeState=!darkModeState,toggleDarkMode(darkModeState),localStorage.setItem("dark-mode",darkModeState)})</script></html>
