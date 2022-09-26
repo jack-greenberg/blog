@@ -1,7 +1,7 @@
 ---
 title: "Add QR Codes to your KiCAD PCBs"
 date: 2022-09-23T13:04:16-04:00
-draft: true
+draft: false
 ---
 
 Testing and debugging PCBs can be challenging. There are lots of resource you
