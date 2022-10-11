@@ -1,91 +1,64 @@
 ---
-title: "Getting started with STM32H750VB in Rust"
-date: 2022-09-21T16:18:56-04:00
+title: "Getting started with <MICROCONTROLLER> in Rust (Part 2: Blinky)"
+date: 2022-10-05T16:18:56-04:00
 draft: false
 ---
 
-This is the story of my incredibly frustrating start with the STM32H750VB
-microcontroller in Rust.
+In my [previous post], I went over the setup and configuration of an embedded
+application in Rust, trying to stay as generic as possible but provide specific
+examples. In this post, I'll focus a little closer on the specific
+microcontroller I am using, but try to generalize where possible.
 
-# Online shopping
+[previous post]: /posts/new-microcontroller-rust/new-microcontroller-rust/
 
-A few months ago, I was browsing Adafruit and came across a cute looking dev
-board called the [WeAct Studio STM32H750 Development Board]. It has
+Today, we'll work on getting a blinky program running. We'll start by creating
+the basic structure of all embedded applications (a `main` function with an
+infinite loop). Next, we'll go over the initialization code that sets up our
+hardware, followed by filling in our infinite loop so that we can blink an LED.
 
-[WeAct Studio STM32H750 Development Board]: https://www.adafruit.com/product/5032
+On the board I am using, there is an LED connected to pin PE3, so that is what
+we will be blinking. The goal is to have a program that turns the LED on for
+half a second and then turns it off for half a second.
 
-* an LCD screen,
-* a camera,
-* an SD card slot,
-* a USB-C connector, and
-* an STM32H750VB microcontroller.
+---
 
-This seemed like a great candidate to get started using embedded Rust,
-especially because I was hoping to be able to use it as a platform to play
-around with [Hubris].
-
-[Hubris]: https://github.com/oxidecomputer/hubris
-
-# Initial commit
-
-While at the [Open Source Firmware Conference (OSFC)] in Sweden in September, I
-started to mess around with the board[^1]. As with most embedded engineers, I
-started with Blinky.
-
-[^1]: This happened between the hours of 11pm and 1am as I was severly
-  jet-lagged.
-
-[Open Source Firmware Conference (OSFC)]: https://osfc.io
-
-I began by cloning the [cortex-m-quickstart] repository on GitHub, a template
-that can be used for ARM Cortex M microcontrollers. To begin with, I looked at
-the configuration files to see what needed to change:
-
-* `.cargo/config.toml`: The chip that I am using is a Cortex-M4F with an FPU, so
-  the target (in `[build]`) should be `thumbv7em-none-eabihf`
-
-* `Cargo.toml`: I added the `stm32h7xx_hal` crate that provides access to
-  peripherals in a convenient way.
-
-* `memory.x`: I set up the linker script to just include 128K of flash at
-  `0x08000000` and 128K of RAM at `0x2000000`, which corresponds to the DTCM
-  RAM. I tried using `0x30000000` for the SRAM1 region, but it didn't work[^2]
-  :disappointed:
-
-[^2]: Note to self: need to spend more time on this.
-
-[cortex-m-quickstart]: https://github.com/rust-embedded/cortex-m-quickstart
-
-In my `main.rs`, I started scaffolding the code for blinky:
+As you will recall from Part 1, we started with the `cortex-m-quickstart`
+template for our application. Cleaning up some of the comments, our
+`src/main.rs` file looks like this:
 
 ```rust
+// src/main.rs
+
 #![no_std]
 #![no_main]
 
 use panic_halt as _;
-use cortex_m_rt::entry;
 
-use stm32h7xx_hal::{
-    delay::Delay, pac, prelude::*
-};
+use cortex_m::asm;
+use cortex_m_rt::entry;
 
 #[entry]
 fn main() -> ! {
     // Init
+    asm::nop();
 
     loop {
-
+        // TODO: Fill me in
     }
 }
 ```
 
-We have our basic embedded application architecture with an [entrypoint], space
-for initialization code, and a main loop.
+We have our basic embedded application architecture with an [entry-point] (`main`), space
+for initialization code, and an infinite loop.
 
 [entrypoint]: https://twitter.com/jackgreenb/status/1572328501692305418?s=20&t=Z4xmnQe7G4iwrupgeeD2Dg
 
-Let's start filling it in. In our initialization, we need access to the _device_
-peripherals like the power configuration and GPIOs, as well as the _core_
+Let's start filling it in.
+
+## Initialization
+
+In our initialization, we need access to the _device_ peripherals like the power
+configuration and GPIOs (unique to the microcontroller), as well as the _core_
 peripherals (unique to Cortex-M devices) like the NVIC and SysTick timer:
 
 ```rust
@@ -96,20 +69,33 @@ let dp = pac::Peripherals::take().unwrap();
 let cp = cortex_m::Peripherals::take().unwrap();
 ```
 
-In Cortex-M-based devices (like ours), the **RCC** (reset and clock control)
-peripheral controls which peripherals receive power and are enabled. We also
-need to use the **PWR** (power) peripheral to make sure our device has the
-correct power supply. We access these like so:
+In order to access peripherals like GPIO, we need to enable them. In order to
+enable them, we need access to the internal clock on the microcontroller. We do
+that by accessing the **RCC** (reset and clock control) struct. We will also
+need to use the **PWR** (power) struct in order to configure the clocks, as
+instructed by the [documentation]:
+
+[documentation]: https://docs.rs/stm32h7xx-hal/latest/stm32h7xx_hal/rcc/index.html
+
+> [RCC] peripheral must be used alongside the PWR peripheral to freeze voltage
+> scaling of the device.
 
 ```rust
 let pwrcfg: stm32h7xx_hal::pwr::PowerConfiguration = dp.PWR.constrain().freeze();
 let rcc: stm32h7xx_hal::rcc::Rcc = dp.RCC.constrain();
 ```
 
-When I saw this in the example code I was ~~pirating~~ learning from, I was
-confused by `.constrain()` and `.freeze()`. It took a bit of digging, but I came
-across [a great article by Jorge Aparicio] about the model that Rust uses to
-interact with hardware peripherals (see the Aside for more details).
+On other microcontrollers, the clocks may have a different model for
+configuration. Check the examples and documentation for your HAL to get an learn
+more. The following code was adapted from the [examples] in the `stm32h7xx-hal`
+library.
+
+[examples]: https://github.com/stm32-rs/stm32h7xx-hal/tree/master/examples
+
+I was initially confused by `.constrain()` and `.freeze()`. It took a bit of
+digging, but I came across [a great article by Jorge Aparicio] about the model
+that Rust uses to interact with hardware peripherals (see the **Aside** for more
+details).
 
 [a great article by Jorge Aparicio]: https://blog.japaric.io/brave-new-io/
 
@@ -119,26 +105,32 @@ interact with hardware peripherals (see the Aside for more details).
 > access to peripherals.
 >
 > Starting with a concrete example, when we access `dp.RCC`, we are accessing a
-> struct with a bunch of members that represent the parts of the PWR registers
-> in our microcontroller. In C, we configure the PWR hardware block by writing
-> to those registers. We do a similar thing in Rust, except it's abstracted.
-> Calling `.constrain()` "consumes the original `RCC` which granted full access
-> to every `RCC` register" and only allows us to modify aspects of the register
-> defined in a struct called **`Parts`** (it's not crucial to know what is in
-> `Parts`).
+> struct with a bunch of members that represent the parts of the RCC registers
+> in our microcontroller. In C, we configure the RCC hardware block by writing
+> to those registers. We do a similar thing in Rust, except it's abstracted for
+> us.
 >
-> When we call `.freeze()`, we consume the `Parts` struct, effectively
-> preventing further modification of the peripherals. This ensures we don't have
+> Calling `.constrain()` "consumes the original `RCC` which granted full
+> access to every `RCC` register" and only allows us to modify aspects of the
+> register defined in a struct called **`Parts`** (it's not crucial to know what
+> is in `Parts`). In "consuming" a struct, we ensure that after configuration,
+> we can no longer use the original `dp.RCC` struct, and must instead use the
+> members of the `Parts` struct.
+>
+> When we call `.freeze()`, we consume the `Parts` struct, preventing further
+> modification of struct and thus the peripherals. This ensures we don't have
 > multiple places in our code trying to change the configuration of peripherals.
 > Note that there are some peripherals that return a new object after calling
 > `.freeze()` because there are parts that make sense to modify during the
 > runtime of the device.
 
-Ok back to blinky. We gain access to the CCDR (Core Clock Distribution and
+OK, back to blinky. We gain access to the CCDR (Core Clock Distribution and
 Reset) struct using the RCC, PWR, and SYSCFG registers. (If this sounds like a
 lot, don't worry--**it is**. I don't fully understand each and every register we
-are writing to. Most of this code is copied and pasted and slightly tweaked
-until I got things working.)
+are writing to. Most of this code is copied and pasted from the [HAL examples]
+and slightly tweaked until I got things working.)
+
+[HAL examples]: https://github.com/stm32-rs/stm32h7xx-hal/tree/master/examples
 
 ```rust
 let ccdr: stm32h7xx_hal::rcc::Ccdr = rcc
@@ -153,7 +145,7 @@ frequencies, and then "freezes" the configuration so that it can't be modified.
 This is the last bit of code we need for initializing the microcontroller
 itself. Next, we will look at setting up GPIO specifically and blinking the LED.
 
-## Blinking something
+## Configuring GPIOs
 
 There are a number of GPIO "pin banks" in the STM32 microcontrollers. They are
 in a group of 16 pins and each group is assigned a letter. So you might 16 pins
@@ -184,6 +176,8 @@ delays into their code:
 let mut delay = delay::Delay::new(cp.SYST, ccdr.clocks);
 ```
 
+## Loop
+
 Now we have our LED variable and our delay variable, and that is all we need to
 do for initialization! After all that, we implemenet a simple 2 line loop:
 
@@ -202,15 +196,6 @@ In all honesty, this was a pretty large effort. It took a while to understand
 how the `.constrain()`, `.freeze()`, and `.split()` methods worked. On top of
 that, some of the code examples I found online were outdated and didn't compile
 straight out of the box.
-
-> ### Aside: Embedded Rust Volatility
->
-> One issue I have been having with my journey so far is how **volatile** the
-> embedded Rust ecosystem is. I believe that the problem is definitely getting
-> better, but there are small differences in different APIs and crates that make
-> things difficult to just port over, and often the documentation associated
-> with the crates isn't stellar. I can see this being one of the biggest
-> hurdles to get over when starting off in embedded Rust.
 
 The code to get blinky running is also substantially longer than the code would
 be in C. However, as I would come to learn after trying a few more advanced
@@ -246,3 +231,9 @@ originally thought it might be :sweat_smile:
 [Rust embedded ecosystem and tools]: https://www.anyleaf.org/blog/rust-embedded-ecosystem-and-tools
 [WeAct Studio Dev Board]: https://www.adafruit.com/product/5032
 [Demystifying Rust Embedded HAL Split and Constrain Methods]: https://dev.to/apollolabsbin/demystifying-rust-embedded-hal-split-and-constrain-methods-591e
+
+---
+
+In the next post, I'll go over the *debugging* ecosystem of embedded Rust and
+we'll work on debugging our program by adding different bugs and using different
+methods to find them.
