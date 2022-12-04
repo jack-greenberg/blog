@@ -1,7 +1,7 @@
 ---
 title: "Remote Embedded Development"
 date: 2022-11-28T18:09:49-08:00
-draft: true
+draft: false
 ---
 
 I hate wires. Being a student of embedded systems for the last couple years, I
@@ -93,6 +93,43 @@ seamless:
   building/compilation. In a future post, we will explore `xtask` to do just
   this so that we can run `cargo xtask remote-flash` to build the firmware, copy
   the file to the server, and flash it.
+
+## Extensions
+
+There are a number of things we could build on to make an even better remote
+setup. Right now, we don't have the ability to simulate digital/analog inputs
+and outputs. Using an Arduino with a serial connection is a very cheap way of
+creating a mini HiL (hardware-in-the-loop) simulator. When working on the high
+voltage power distribution firmware for my college's Formula SAE team I used a
+system like this to fully test the state machine that controlled power
+distribution and precharge for our tractive system:
+
+![](images/air-hil.jpg)
+
+This system could simulate all the inputs and read all the outputs, for both
+GPIO pins and the CANbus network that the target was connected to. As a result
+of being able to do this testing, we had almost no integration issues between
+firmware and the final version of hardware. Adding a Raspberry Pi to the mix,
+even hooking it up to Github Actions to do automated hardware-based continuous
+integration, and your systems will continue getting more and more robust!
+
+### A brief _request for help_
+
+One area that I am interested in exploring is a setup that allows for automated
+testing, in-person development, _and_ remote development. The idea is that a
+user can access the hardware in person by connecting various programmers and
+dongles to their laptop, *or* they can remotely access it as it is connected to
+a Raspberry Pi, ***or*** if it isn't being used by someone, it can be utilized
+by an automated testing setup in continuous integration. This would allow for
+full flexibility of an embedded workflow and would save on cost to not have to
+have duplicated rigs.
+
+I'm not totally sure about how to go about this though. There would probably
+need to be some way of the user indicating that they are using the rig in
+person, maybe a button or a switch or something. And the continuous integration
+handler would need to be smart enough to know when the system was in use. If
+anyone has any ideas, my email is on the [About](/about) page, so feel free to
+get in touch!
 
 ## Conclusion
 
