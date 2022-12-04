@@ -1,0 +1,69 @@
+<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Jack's blog and portfolio."><link rel="shortcut icon" href=https://blog.jackgreenberg.co/favicon.ico><link rel=stylesheet href=/css/style.min.css><title>Remote Embedded Development</title><link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel=stylesheet></head><body><script>MathJax={tex:{inlineMath:[["$","$"],["\\(","\\)"]],displayMath:[["$$","$$"],["\\[","\\]"]],processEscapes:!0,processEnvironments:!0},options:{skipHtmlTags:["script","noscript","style","textarea","pre"]}},window.addEventListener("load",e=>{document.querySelectorAll("mjx-container").forEach(function(e){e.parentElement.classList+="has-jax"})})</script><header class=banner><h2><a href=https://blog.jackgreenberg.co>Jack Greenberg</a></h2><nav><ul><li><a href=/about/ title=about>about</a></li><li><a href=/projects/ title=projects>projects</a></li><li><a href=/resume.pdf title=resume>resume</a></li><li><button id=toggle-dark><svg id="sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-sun"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><svg id="moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-moon"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></button></li></ul></nav></header><main id=content><article><header id=post-header><h1>Remote Embedded Development</h1><div><time>November 28, 2022</time></div></header><details id=toc-inline><summary><b>Table of Contents</b></summary><nav id=TableOfContents><ul><li><a href=#background>Background</a></li><li><a href=#materials>Materials</a></li><li><a href=#workflow>Workflow</a></li><li><a href=#extensions>Extensions</a><ul><li><a href=#a-brief-_request-for-help_>A brief <em>request for help</em></a></li></ul></li><li><a href=#conclusion>Conclusion</a></li></ul></nav></details><p>I hate wires. Being a student of embedded systems for the last couple years, I
+have had plenty of experience lugging wires around, finding and losing small
+screw drivers for screw pin terminals, and plugging and unplugging dev boards
+from debuggers.</p><p>In this post, I&rsquo;ll talk about how I found a low-cost solution to my woes and how
+anyone can set up something similar.</p><hr><h2 id=background>Background</h2><p>While working on an embedded Rust project for a class, I found myself carrying a
+small STM32H750 development board in my backpack, along with a USB cable, a
+debugger, a USB cable <em>for</em> the debugger, and lots of jumper wires. Anytime I
+wanted to do work, I had to pull all of this out of my bag and reassemble it.
+The more I did this, the more annoyed I became, until finally I carved out some
+time to find a better solution.</p><p>In previous internships, there was a way to access hardware in a lab from my
+laptop by accessing the company VPN and then <code>ssh</code>ing into a computer connected
+to the hardware. I set out to create a similar setup in my dorm room.</p><p>My goal is to be able to debug and test hardware remotely as easily as I could
+with the hardware in front of me. Of course, there are limitations: we don&rsquo;t
+have any hardware-in-the-loop that would allow us to set and read analog and
+digital signals, and any issues in hardware or hardware setup would require
+access to the hardware. However, for working on an application or a bootloader,
+it should be sufficient to have access to a debugger like GDB and the ability to
+flash and run a serial console.</p><h2 id=materials>Materials</h2><p>I had a few Raspberry Pis lying around, so I installed RaspbianOS and connected
+my debugger to the USB port on the Pi. I also connected the USB peripheral of
+the dev board I am using to the Pi because the project I was working on used
+USB, and I was able to use the USB port of the device to power the
+microcontroller.</p><p>In addition, I had a USB web camera sitting in my desk drawer so I connected it
+to the Raspberry Pi and set up a tool called <a href=https://motion-project.github.io><code>motion</code></a> which allows users to
+expose a USB webcam as a live stream with a web interface. My configuration can
+be found in <a href=https://gist.github.com/jack-greenberg/d73c71e51a8d00a9bffee68a027765df>this GitHub Gist</a>.</p><p>With this, I was able to run the following command on Linux to pull up a window
+with the live stream:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-sh data-lang=sh><span class=line><span class=cl>$ ffplay <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    -fflags nobuffer <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    -flags low_delay <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    -framedrop -strict experimental <span class=se>\
+</span></span></span><span class=line><span class=cl><span class=se></span>    &lt;server_ip_address&gt;:8081
+</span></span></code></pre></div><p>This is incredibly useful for applications where you have visual elements like
+LEDs or an LCD screen.</p><h2 id=workflow>Workflow</h2><p>At the moment, my workflow looks like this:</p><ol><li>Develop code locally</li><li>Use <code>cargo</code> locally to build a firmware image</li><li>Use <code>scp</code> to copy the built file to the Raspberry Pi using <code>ssh</code></li><li>In an <code>ssh</code> session, use <code>probe-run</code> to flash and monitor the serial output
+from <code>defmt</code></li><li>Rinse and repeat</li></ol><p>The main issue with this workflow as of now is the number of steps and time that
+it takes. There are a couple of things we can do to make the process more
+seamless:</p><ul><li><p>Instead of having a separate <code>ssh</code> session open, we can just run <code>probe-run</code>
+from <code>ssh</code> directly&ndash;<code>ssh</code> defaults to just using the <code>$SHELL</code> of the server
+you are accessing, but you can actually run any command, like so:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-sh data-lang=sh><span class=line><span class=cl>$ ssh user@server_ip <span class=s1>&#39;probe-run --chip=STM32H750VB ./dfuh7&#39;</span>
+</span></span></code></pre></div></li><li><p>We can wrap the whole thing in a <code>cargo xtask</code>. <code>xtask</code> is similar to GNU
+Make in that you can use it to execute arbitrary commands during
+building/compilation. In a future post, we will explore <code>xtask</code> to do just
+this so that we can run <code>cargo xtask remote-flash</code> to build the firmware, copy
+the file to the server, and flash it.</p></li></ul><h2 id=extensions>Extensions</h2><p>There are a number of things we could build on to make an even better remote
+setup. Right now, we don&rsquo;t have the ability to simulate digital/analog inputs
+and outputs. Using an Arduino with a serial connection is a very cheap way of
+creating a mini HiL (hardware-in-the-loop) simulator. When working on the high
+voltage power distribution firmware for my college&rsquo;s Formula SAE team I used a
+system like this to fully test the state machine that controlled power
+distribution and precharge for our tractive system:</p><p><img src=images/air-hil.jpg alt></p><p>This system could simulate all the inputs and read all the outputs, for both
+GPIO pins and the CANbus network that the target was connected to. As a result
+of being able to do this testing, we had almost no integration issues between
+firmware and the final version of hardware. Adding a Raspberry Pi to the mix,
+even hooking it up to Github Actions to do automated hardware-based continuous
+integration, and your systems will continue getting more and more robust!</p><h3 id=a-brief-_request-for-help_>A brief <em>request for help</em></h3><p>One area that I am interested in exploring is a setup that allows for automated
+testing, in-person development, <em>and</em> remote development. The idea is that a
+user can access the hardware in person by connecting various programmers and
+dongles to their laptop, <em>or</em> they can remotely access it as it is connected to
+a Raspberry Pi, <em><strong>or</strong></em> if it isn&rsquo;t being used by someone, it can be utilized
+by an automated testing setup in continuous integration. This would allow for
+full flexibility of an embedded workflow and would save on cost to not have to
+have duplicated rigs.</p><p>I&rsquo;m not totally sure about how to go about this though. There would probably
+need to be some way of the user indicating that they are using the rig in
+person, maybe a button or a switch or something. And the continuous integration
+handler would need to be smart enough to know when the system was in use. If
+anyone has any ideas, my email is on the <a href=/about>About</a> page, so feel free to
+get in touch!</p><h2 id=conclusion>Conclusion</h2><p>In the end, my remote embedded setup works great for me. There is a lot of
+muscle-memory involved for now in terms of remembering the correct commands and
+the correct order, but for now, I am able to work on my application remotely
+just as efficiently as I would if I was still lugging the hardware around in my
+backpack, so I consider it a success.</p></article></main><footer id=footer>Copyright (c) 2022 Jack Greenberg</footer></body><script>let darkModeState=!1;const useDark=window.matchMedia("(prefers-color-scheme: dark)"),toggle_button=document.querySelector("#toggle-dark");function toggleDarkMode(e){document.documentElement.classList.toggle("dark-mode",e),darkModeState=e}toggleDarkMode(localStorage.getItem("dark-mode")=="true"),useDark.addListener(e=>toggleDarkMode(e.matches)),toggle_button.addEventListener("click",()=>{darkModeState=!darkModeState,toggleDarkMode(darkModeState),localStorage.setItem("dark-mode",darkModeState)})</script></html>
