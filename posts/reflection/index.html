@@ -1,0 +1,105 @@
+<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Jack's blog and portfolio."><link rel="shortcut icon" href=https://blog.jackgreenberg.co/favicon.ico><link rel=stylesheet href=/css/style.min.css><title>Reflection on Embedded Rust</title><link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel=stylesheet></head><body><script>MathJax={tex:{inlineMath:[["$","$"],["\\(","\\)"]],displayMath:[["$$","$$"],["\\[","\\]"]],processEscapes:!0,processEnvironments:!0},options:{skipHtmlTags:["script","noscript","style","textarea","pre"]}},window.addEventListener("load",e=>{document.querySelectorAll("mjx-container").forEach(function(e){e.parentElement.classList+="has-jax"})})</script><header class=banner><h2><a href=https://blog.jackgreenberg.co>Jack Greenberg</a></h2><nav><ul><li><a href=/about/ title=about>about</a></li><li><a href=/projects/ title=projects>projects</a></li><li><a href=/resume.pdf title=resume>resume</a></li><li><button id=toggle-dark><svg id="sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-sun"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><svg id="moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-moon"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></button></li></ul></nav></header><main id=content><article><header id=post-header><h1>Reflection on Embedded Rust</h1><div><time>December 12, 2022</time></div></header><details id=toc-inline><summary><b>Table of Contents</b></summary><nav id=TableOfContents><ul><li><a href=#1-tooling-ecosystem>1. Tooling Ecosystem</a></li><li><a href=#2-rusts-features>2. Rust&rsquo;s Features</a></li><li><a href=#3-rusts-complexity>3. Rust&rsquo;s Complexity</a></li></ul></nav></details><p>This semester I decided to embark on an independent study of embedded Rust.
+Having worked extensively in C, I wanted to explore a new frontier of embedded
+systems. After three months and a handful of projects, I have come up with a few
+main takeaways:</p><ol><li>The tooling ecosystem for embedded Rust makes writing, testing, and debugging
+code far simpler than the tooling ecosystem for C.</li><li>Rust&rsquo;s patterns of traits and implementations makes for more idiomatic
+embedded systems that lend themselves to different hardware platforms.</li><li>Both Rust and C are appriopriate languages for embedded systems, but Rust has
+the additional complexity because of things like borrow-checking and
+lifetimes which make development more difficult for C developers.</li></ol><p>In this post I&rsquo;ll dive into each of the three categories, talking about my
+experience and where I&rsquo;ll be going from here.</p><hr><h2 id=1-tooling-ecosystem>1. Tooling Ecosystem</h2><p>I&rsquo;ll start with a story.</p><p>I few years ago, I was working on a project for Principles of Integrated
+Engineering, a course taught at Olin in which students team up to create
+integrated systems with mechanical, electrical, and firmware components. I was
+working on a gantry system and I was the RE (responsible engineer) for firmware.</p><p>I was fairly comfortable with C at this point from an internship, so I decided
+that I would ditch the default Arduino setup that other teams took and use an
+STM32 Blue Pill, which has a 32-bit ARM Cortex M3 microcontroller. I also wanted
+to further challenge myself by integrating CMake (a build system I hadn&rsquo;t used
+before), FreeRTOS, and use peripheral drivers from libopencm3.</p><p>The setup was nightmarish. It took two weeks just to get compiling code. Between
+setting up the build chain, finding all the correct linker flags, getting all
+the correct code linked in, and setting up the tools to flash, I barely had time
+to work on the actual application.</p><p>Now compare this with the <a href=posts/new-microcontroller-rust/new-microcontroller-rust/>setup for Rust</a>. Cargo alone is a complete game
+changer. A single tool that can be used for compiling, running, flashing,
+testing, and debugging code, not to mention seamlessly integrated package
+management and cross-compilation&mdash;it puts C to shame.</p><p>With templates like <code>cortex-m-quickstart</code>, the time between concept and running
+firmware is far lower than any tooling provided for embedded C.</p><p>This is one of the best features of Rust. For my capstone, I am working with a
+partner on a firmware image that implements motor control via trapezoidal
+commutation, and it took less than an hour to get some initial code with all the
+correct hardware setup. And the ease of setting up hardware and writing the code
+brings me into the next topic&mldr;</p><hr><h2 id=2-rusts-features>2. Rust&rsquo;s Features</h2><p>One area of Rust that is incredibly promising is <em>traits</em> and <em>implementations</em>.
+Imagine working with a piece of hardware that has an LCD screen attached to it.
+These are very complex pieces of hardware, and when writing C, it can be
+incredibly difficult to do any complicated graphics given the difficulty of
+writing a driver for the chip and then writing a layer that processes graphics
+which utilizes your chip driver.</p><p>Rust has a crate called <code>embedded-graphics</code> that manages that upper layer. You
+can very easily create objects representing text, images, and shapes. For the
+chip-driver layer, <code>embedded-graphics</code> provides a trait, where any struct that
+implements the required members of the trait can seamlessly display the text or
+shapes that you have created.</p><p>This creates a separation of hardware logic from so-called &ldquo;business logic&rdquo;.
+Maybe the chip you are using to drive the LCD screen is out of stock. No
+worries, you can simply find a new chip, develop the driver (likely one already
+exists and has a crate) and implement the <code>embedded-graphics</code> trait, and
+voila! You have a working LCD screen displaying the same thing as was on your
+old chip. In this way we have very stack-able code in Rust. Traits and
+implementations define the interface between two layers of a software stack, and
+different instances of those layers can be swapped out depending on the
+circumstance.</p><p>I experienced this first-hand when working on the device firmware upgrade (DFU)
+<a href=https://github.com/jack-greenberg/dfuh7>bootloader</a> for the STM32H750. I was able to find a crate that provided a trait
+called <code>DFUMemIO</code>. I created an implementation of that trait that used QSPI and
+USB to perform the flashing, and just like that I was able to create a
+bootloader.</p><hr><h2 id=3-rusts-complexity>3. Rust&rsquo;s Complexity</h2><p>While there is a lot to love about Rust, I would be remiss if I didn&rsquo;t mention
+the downsides. At the beginning of this article, I mentioned that the ease of
+tooling and how that lets developers focus more on the writing the application.
+However, in my experience, the time gained by not worrying about tooling is made
+up for by struggling with Rust&rsquo;s compiler.</p><p>People in the Rust community often call this &ldquo;fighting with the borrow-checker&rdquo;.
+Rust&rsquo;s feature of borrow checking and lifetimes are incredibly powerful and lead
+to safer applications from a memory and concurrency standpoint, but for the
+uninitiated, this can be incredibly difficult to navigate.</p><p>Let&rsquo;s take an example of how a straightforward concept, simple (yet dangerous)
+to execute in C, is much more convoluted in Rust.</p><p>Say I have some global struct that I&rsquo;d like to access. Maybe it contains data
+for a driver. In C, we can simply declare it in the global scope:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-c data-lang=c><span class=line><span class=cl><span class=k>struct</span> <span class=n>DriverInfo</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kt>uint32_t</span> <span class=n>data_a</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kt>uint8_t</span> <span class=n>data_b</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>};</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>struct</span> <span class=n>DriverInfo</span> <span class=n>drv</span> <span class=o>=</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=p>.</span><span class=n>data_a</span> <span class=o>=</span> <span class=mi>0</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=p>.</span><span class=n>data_b</span> <span class=o>=</span> <span class=mi>0</span>
+</span></span><span class=line><span class=cl><span class=p>};</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>void</span> <span class=nf>foo</span><span class=p>(</span><span class=kt>uint32_t</span> <span class=n>new_value</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>drv</span><span class=p>.</span><span class=n>data_a</span> <span class=o>=</span> <span class=mi>1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kt>int</span> <span class=nf>main</span><span class=p>(</span><span class=kt>void</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>drv</span><span class=p>.</span><span class=n>data_a</span> <span class=o>=</span> <span class=mi>12</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=k>for</span> <span class=p>(;;)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=n>foo</span><span class=p>(</span><span class=mi>2</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// ...
+</span></span></span><span class=line><span class=cl><span class=c1></span>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></div><p>In Rust, this is much more difficult. The declaration of our global object looks
+like this:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=k>static</span><span class=w> </span><span class=k>mut</span><span class=w> </span><span class=n>drv</span>: <span class=nc>Mutex</span><span class=o>&lt;</span><span class=n>RefCell</span><span class=o>&lt;</span><span class=nb>Option</span><span class=o>&lt;</span><span class=n>DriverInfo</span><span class=o>&gt;&gt;&gt;</span><span class=w> </span><span class=o>=</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=n>Mutex</span>::<span class=n>new</span><span class=p>(</span><span class=n>Refcell</span>::<span class=n>new</span><span class=p>(</span><span class=nb>None</span><span class=p>));</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=k>fn</span> <span class=nf>main</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>let</span><span class=w> </span><span class=k>mut</span><span class=w> </span><span class=n>drv</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=o>..</span><span class=p>.;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>unsafe</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=n>interrupt_free</span><span class=p>(</span><span class=o>|</span><span class=n>cs</span><span class=o>|</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>            </span><span class=n>drv</span><span class=p>.</span><span class=n>borrow</span><span class=p>(</span><span class=n>cs</span><span class=p>).</span><span class=n>replace</span><span class=p>(</span><span class=nb>Some</span><span class=p>(</span><span class=n>drv</span><span class=p>));</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>});</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></div><p>The method used in Rust is far more complex than in C. We have to use an
+<code>Option</code>, a <code>RefCell</code> ("[a] mutable memory location with dynamically checked
+borrow rules"), and a mutex (allows for access in an interrupt context or across
+threads). Because <code>drv</code> is a global, static mutable, any attempt to write or
+read requires an <code>unsafe</code> wrapping because the compiler cannot verify that
+accessing it will always be deterministic.</p><p>Rust trades verbosity for safety. This is arguably a great deal, but it means
+that a lot of research and pattern matching is needed to write embedded Rust
+code. Luckily, there are already lots of great resources and examples for doing
+almost anything in embedded Rust, so with enough patience, anything is possible.</p><hr><p>My journey learning embedded Rust has been incredibly fruitful. I am by no means
+an expert in embedded Rust, but I can already see myself using it in future
+projects (in my senior capstone, I am working on an embedded controls
+application written in Rust). Hopefully, the more time I spend with Rust, the
+less I will have to fight with the compiler and the more I will understand the
+complexity of safely managing memory.</p></article></main><footer id=footer>Copyright (c) 2022 Jack Greenberg</footer></body><script>let darkModeState=!1;const useDark=window.matchMedia("(prefers-color-scheme: dark)"),toggle_button=document.querySelector("#toggle-dark");function toggleDarkMode(e){document.documentElement.classList.toggle("dark-mode",e),darkModeState=e}toggleDarkMode(localStorage.getItem("dark-mode")=="true"),useDark.addListener(e=>toggleDarkMode(e.matches)),toggle_button.addEventListener("click",()=>{darkModeState=!darkModeState,toggleDarkMode(darkModeState),localStorage.setItem("dark-mode",darkModeState)})</script></html>

@@ -1,0 +1,86 @@
+<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Jack's blog and portfolio."><link rel="shortcut icon" href=https://blog.jackgreenberg.co/favicon.ico><link rel=stylesheet href=/css/style.min.css><title>Using Rust's Xtask to Automate Remote Embedded Development</title><link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel=stylesheet></head><body><script>MathJax={tex:{inlineMath:[["$","$"],["\\(","\\)"]],displayMath:[["$$","$$"],["\\[","\\]"]],processEscapes:!0,processEnvironments:!0},options:{skipHtmlTags:["script","noscript","style","textarea","pre"]}},window.addEventListener("load",e=>{document.querySelectorAll("mjx-container").forEach(function(e){e.parentElement.classList+="has-jax"})})</script><header class=banner><h2><a href=https://blog.jackgreenberg.co>Jack Greenberg</a></h2><nav><ul><li><a href=/about/ title=about>about</a></li><li><a href=/projects/ title=projects>projects</a></li><li><a href=/resume.pdf title=resume>resume</a></li><li><button id=toggle-dark><svg id="sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-sun"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><svg id="moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-moon"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></button></li></ul></nav></header><main id=content><article><header id=post-header><h1>Using Rust's Xtask to Automate Remote Embedded Development</h1><div><time>December 11, 2022</time></div></header><details id=toc-inline><summary><b>Table of Contents</b></summary><nav id=TableOfContents></nav></details><p>Cargo is an incredibly powerful tool. Not only does it manage building, running,
+and testing code, but it also serves as a package manager. However, there are
+limitations to Cargo. A tool like GNU Make provides a framework for running
+arbitrary commands to complete tasks, but requires a lot of configuration,
+whereas Cargo has a more limited scope but is effectively plug and play.</p><p>In this post, we&rsquo;ll look at <a href=https://github.com/matklad/cargo-xtask><em>xtask</em></a>, a tool that extends the functionality of
+Cargo to execute arbitrary code written in&mdash;you guessed it&mdash;Rust.</p><hr><p>One thing you will notice looking at the xtask repository is that there is <em>no
+code</em>. Xtask isn&rsquo;t a library, it&rsquo;s a convention. To use it, you create a Rust
+package called xtask in your repository. When you run xtask with <code>cargo xtask</code>,
+it simply runs the <code>main.rs</code> file that you create in the xtask crate you
+created.</p><p>Getting started is fairly easy. Your project will have to use the Cargo
+<em>workspace</em> feature, which allows you to have multiple sub-crates in a single
+parent crate. The xtask README has good instructions on how to do that. You will
+create a member of your workspace called <code>xtask</code> and then in your
+<code>.cargo/config.toml</code> file, you add the following:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-toml data-lang=toml><span class=line><span class=cl><span class=p>[</span><span class=nx>alias</span><span class=p>]</span>
+</span></span><span class=line><span class=cl><span class=nx>xtask</span> <span class=p>=</span> <span class=s2>&#34;run --package xtask --&#34;</span>
+</span></span></code></pre></div><p>What this does is anytime you run <code>cargo xtask</code>, it will internally run</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-shell data-lang=shell><span class=line><span class=cl>cargo run --package xtask --
+</span></span></code></pre></div><p>In your xtask crate, you create a <code>main.rs</code> file and fill that in with the
+arbitrary code you want to run.</p><h1 id=an-example-project>An example project</h1><p>For my embedded Rust independent study, I found myself doing a lot of <a href=/posts/remote-embedded/>remote
+embedded development</a>. I found myself constantly running the following commands
+over and over in the same order:</p><ol><li><code>cargo build ...</code></li><li><code>scp target/thumbv7em-none-eabihf/release/...</code></li><li><code>ssh user@ip.address probe-run ...</code></li></ol><p>Running this multiple times was annoying, and I wanted a way to automate it.
+This is a perfect use-case for xtask! Let&rsquo;s set that up.</p><p>I went ahead and converted my project into a workspace and added a member called
+xtask, creating the Cargo alias that let&rsquo;s me run <code>cargo xtask</code> and creating the
+<code>main.rs</code> file.</p><p>In the xtask, I want to first compile the project, then copy it to the remote
+server, and finally use probe-run to flash and debug the program. We&rsquo;ll start by
+building it. The recommended way to do this is to use Rust&rsquo;s <code>Command</code> system to
+invoke processes, similar to the Unix fork + exec. The API is fairly
+straightforward. We&rsquo;ll first get the instance of Cargo that the user has
+installed by checking for the <code>CARGO</code> environment variable, and then build the
+command, execute, and read the result:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=k>fn</span> <span class=nf>build</span><span class=p>()</span><span class=w> </span>-&gt; <span class=nb>Result</span><span class=o>&lt;</span><span class=p>(),</span><span class=w> </span><span class=nb>Box</span><span class=o>&lt;</span><span class=k>dyn</span><span class=w> </span><span class=n>std</span>::<span class=n>error</span>::<span class=n>Error</span><span class=o>&gt;&gt;</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>let</span><span class=w> </span><span class=n>cargo</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>env</span>::<span class=n>var</span><span class=p>(</span><span class=s>&#34;CARGO&#34;</span><span class=p>).</span><span class=n>unwrap_or_else</span><span class=p>(</span><span class=o>|</span><span class=n>_</span><span class=o>|</span><span class=w> </span><span class=s>&#34;cargo&#34;</span><span class=p>.</span><span class=n>to_string</span><span class=p>());</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>let</span><span class=w> </span><span class=n>status</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>Command</span>::<span class=n>new</span><span class=p>(</span><span class=n>cargo</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>.</span><span class=n>args</span><span class=p>(</span><span class=o>&amp;</span><span class=p>[</span><span class=s>&#34;build&#34;</span><span class=p>,</span><span class=w> </span><span class=s>&#34;--release&#34;</span><span class=p>,</span><span class=w> </span><span class=s>&#34;--package=dfuh7&#34;</span><span class=p>,</span><span class=w> </span><span class=s>&#34;--target=thumbv7em-none-eabihf&#34;</span><span class=p>])</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>.</span><span class=n>status</span><span class=p>()</span><span class=o>?</span><span class=p>;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=o>!</span><span class=n>status</span><span class=p>.</span><span class=n>success</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nb>Err</span><span class=p>(</span><span class=s>&#34;cargo build failed&#34;</span><span class=p>)</span><span class=o>?</span><span class=p>;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nb>Ok</span><span class=p>(())</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></div><p>This creates an invocation of <code>cargo build</code> that we can use by just calling
+<code>build()</code> in our <code>main</code> function in <code>xtask/main.rs</code>. In future iterations, it
+would be fairly straightforward to pass the name of the package into the
+function and create a more generic <code>build</code> function that can build multiple
+different members of a workspace. This would also allow us to pass specific
+arguments to <code>cargo build</code> depending on the package.</p><p>Next, we copy the file to a remote server, and we can do something similar:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-rust data-lang=rust><span class=line><span class=cl><span class=k>fn</span> <span class=nf>copy</span><span class=p>(</span><span class=n>remote_host</span>: <span class=kt>str</span><span class=p>)</span><span class=w> </span>-&gt; <span class=nb>Result</span><span class=o>&lt;</span><span class=p>(),</span><span class=w> </span><span class=nb>Box</span><span class=o>&lt;</span><span class=k>dyn</span><span class=w> </span><span class=n>std</span>::<span class=n>error</span>::<span class=n>Error</span><span class=o>&gt;&gt;</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=kd>let</span><span class=w> </span><span class=n>status</span><span class=w> </span><span class=o>=</span><span class=w> </span><span class=n>Command</span>::<span class=n>new</span><span class=p>(</span><span class=s>&#34;scp&#34;</span><span class=p>)</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>.</span><span class=n>args</span><span class=p>(</span><span class=o>&amp;</span><span class=p>[</span><span class=s>&#34;target/thumbv7em-none-eabihf/release/dfuh7&#34;</span><span class=p>,</span><span class=w> </span><span class=fm>format!</span><span class=p>(</span><span class=s>&#34;scp://{}&#34;</span><span class=p>,</span><span class=w> </span><span class=n>remote_host</span><span class=p>)])</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=p>.</span><span class=n>status</span><span class=p>()</span><span class=o>?</span><span class=p>;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=k>if</span><span class=w> </span><span class=o>!</span><span class=n>status</span><span class=p>.</span><span class=n>success</span><span class=p>()</span><span class=w> </span><span class=p>{</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>        </span><span class=nb>Err</span><span class=p>(</span><span class=s>&#34;Unable to copy file to server&#34;</span><span class=p>)</span><span class=o>?</span><span class=p>;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=p>}</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nb>Ok</span><span class=p>(())</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=p>}</span><span class=w>
+</span></span></span></code></pre></div><p>In future iterations, I would like to explore using <code>librsync</code>, which is a
+protocol that improves upon the basic capabilities of <code>scp</code>. Additionally, there
+is something a bit cleaner about using libraries directly instead of simply
+invoking commands on the command line&ndash;it becomes simpler to handle and react to
+errors.</p><p>Finally, we have to flash the file. This is slightly more complicated. Ideally,
+we could use the <a href=https://probe.rs/><code>probe-rs</code></a>, a library that provides the ability to flash and
+debug firmware on an embedded target. However, because we are running our xtask
+locally but want to execute flashing on a remote host, we can&rsquo;t just use this.</p><p>We could use the <code>probe-run</code> CLI that ships with probe-rs through an SSH
+session, but I was unable to get this working in the amount of time I had on
+this project.</p><p>The other solution I started on was to set up an HTTP server on the remote host.
+The idea is that a user can make a POST request with the binary as an attached
+file, and the server would take the file and handle flashing the target. Then,
+the output of the debugger could be streamed back to the local machine and
+printed out. We would then no longer need to use <code>scp</code> or <code>rsync</code> to copy the
+file over, and our xtask could simply build the file and then send an HTTP
+request. In the near future, I&rsquo;d like to continue fleshing out this idea, but in
+the shorter term, I am having trouble getting the <code>probe-rs</code> library working on
+the remote host.</p><hr><p>In the end, I have a partially working system. I have been able to successfully
+copy files to a server, using both <code>scp</code> and HTTP, but it was proving very
+difficult to prototype the system where the remote host uses <code>probe-rs</code> to flash
+the firmware and send the debugging output back to the local machine. This is
+one of the difficulties I find with Rust&mdash;it&rsquo;s hard to create simple prototypes
+because the language lends itself to highly robust and complete systems. This is
+of course great for production code, but it makes quick experiments more
+challenging.</p><p>In the future, I plan to spend more time working on my remote flashing tool.
+Ideally I would like to create a system that is generic enough that in can be
+deployed on different remote hosts with multiple embedded targets attached.</p></article></main><footer id=footer>Copyright (c) 2022 Jack Greenberg</footer></body><script>let darkModeState=!1;const useDark=window.matchMedia("(prefers-color-scheme: dark)"),toggle_button=document.querySelector("#toggle-dark");function toggleDarkMode(e){document.documentElement.classList.toggle("dark-mode",e),darkModeState=e}toggleDarkMode(localStorage.getItem("dark-mode")=="true"),useDark.addListener(e=>toggleDarkMode(e.matches)),toggle_button.addEventListener("click",()=>{darkModeState=!darkModeState,toggleDarkMode(darkModeState),localStorage.setItem("dark-mode",darkModeState)})</script></html>
